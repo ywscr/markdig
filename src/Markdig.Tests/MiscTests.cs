@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Markdig.Extensions.AutoLinks;
 using NUnit.Framework;
@@ -8,6 +9,79 @@ namespace Markdig.Tests
 {
     public class MiscTests
     {
+        [Test]
+        public void LinkWithInvalidNonAsciiDomainNameIsIgnored()
+        {
+            // Url from https://github.com/lunet-io/markdig/issues/438
+            _ = Markdown.ToHtml("[minulém díle](http://V%20minulém%20díle%20jsme%20nainstalovali%20SQL%20Server,%20který%20je%20nutný%20pro%20běh%20Configuration%20Manageru.%20Dnes%20nás%20čeká%20instalace%20WSUS,%20což%20je%20produkt,%20jež%20je%20možné%20používat%20i%20jako%20samostatnou%20funkci%20ve%20Windows%20Serveru,%20který%20se%20stará%20o%20stažení%20a%20instalaci%20aktualizací%20z%20Microsoft%20Update%20na%20klientské%20počítače.%20Stejně%20jako%20v%20předchozích%20dílech,%20tak%20i%20v%20tomto%20si%20ukážeme%20obě%20varianty%20instalace%20–%20a%20to%20jak%20instalaci%20z%20PowerShellu,%20tak%20instalaci%20pomocí%20GUI.) ");
+
+            // Valid IDN
+            TestParser.TestSpec("[foo](http://ünicode.com)", "<p><a href=\"http://xn--nicode-2ya.com\">foo</a></p>");
+            TestParser.TestSpec("[foo](http://ünicode.ünicode.com)", "<p><a href=\"http://xn--nicode-2ya.xn--nicode-2ya.com\">foo</a></p>");
+
+            // Invalid IDN
+            TestParser.TestSpec("[foo](http://ünicode..com)", "<p><a href=\"http://%C3%BCnicode..com\">foo</a></p>");
+        }
+
+        [TestCase("link [foo [bar]]")] // https://spec.commonmark.org/0.29/#example-508
+        [TestCase("link [foo][bar]")]
+        [TestCase("link [][foo][bar][]")]
+        [TestCase("link [][foo][bar][[]]")]
+        [TestCase("link [foo] [bar]")]
+        [TestCase("link [[foo] [] [bar] [[abc]def]]")]
+        [TestCase("[]")]
+        [TestCase("[ ]")]
+        [TestCase("[bar][]")]
+        [TestCase("[bar][ foo]")]
+        [TestCase("[bar][foo ][]")]
+        [TestCase("[bar][fo[ ]o ][][]")]
+        [TestCase("[a]b[c[d[e]f]g]h")]
+        [TestCase("a[b[c[d]e]f[g]h]i foo [j]k[l[m]n]o")]
+        [TestCase("a[b[c[d]e]f[g]h]i[] [][foo][bar][] foo [j]k[l[m]n]o")]
+        [TestCase("a[b[c[d]e]f[g]h]i foo [j]k[l[m]n]o[][]")]
+        public void LinkTextMayContainBalancedBrackets(string linkText)
+        {
+            string markdown = $"[{linkText}](/uri)";
+            string expected = $@"<p><a href=""/uri"">{linkText}</a></p>";
+
+            TestParser.TestSpec(markdown, expected);
+
+            // Make the link text unbalanced
+            foreach (var bracketIndex in linkText
+                .Select((c, i) => new Tuple<char, int>(c, i))
+                .Where(t => t.Item1 == '[' || t.Item1 == ']')
+                .Select(t => t.Item2))
+            {
+                string brokenLinkText = linkText.Remove(bracketIndex, 1);
+
+                markdown = $"[{brokenLinkText}](/uri)";
+                expected = $@"<p><a href=""/uri"">{brokenLinkText}</a></p>";
+
+                string actual = Markdown.ToHtml(markdown);
+                Assert.AreNotEqual(expected, actual);
+            }
+        }
+
+        [Test]
+        public void IsIssue356Corrected()
+        {
+            string input = @"https://foo.bar/path/\#m4mv5W0GYKZpGvfA.97";
+            string expected = @"<p><a href=""https://foo.bar/path/%5C#m4mv5W0GYKZpGvfA.97"">https://foo.bar/path/\#m4mv5W0GYKZpGvfA.97</a></p>";
+
+            TestParser.TestSpec($"<{input}>", expected);
+            TestParser.TestSpec(input, expected, "autolinks|advanced");
+        }
+
+        [Test]
+        public void IsIssue365Corrected()
+        {
+            // The scheme must be escaped too...
+            string input = "![image](\"onclick=\"alert&amp;#40;'click'&amp;#41;\"://)";
+            string expected = "<p><img src=\"%22onclick=%22alert&amp;#40;%27click%27&amp;#41;%22://\" alt=\"image\" /></p>";
+
+            TestParser.TestSpec(input, expected);
+        }
+
         [Test]
         public void TestAltTextIsCorrectlyEscaped()
         {

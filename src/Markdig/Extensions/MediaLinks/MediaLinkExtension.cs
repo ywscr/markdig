@@ -3,8 +3,6 @@
 // See the license.txt file in the project root for more information.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Markdig.Renderers;
 using Markdig.Renderers.Html;
 using Markdig.Renderers.Html.Inlines;
@@ -15,7 +13,7 @@ namespace Markdig.Extensions.MediaLinks
     /// <summary>
     /// Extension for extending image Markdown links in case a video or an audio file is linked and output proper link.
     /// </summary>
-    /// <seealso cref="Markdig.IMarkdownExtension" />
+    /// <seealso cref="IMarkdownExtension" />
     public class MediaLinkExtension : IMarkdownExtension
     {
         public MediaLinkExtension() : this(new MediaOptions())
@@ -35,8 +33,7 @@ namespace Markdig.Extensions.MediaLinks
 
         public void Setup(MarkdownPipeline pipeline, IMarkdownRenderer renderer)
         {
-            var htmlRenderer = renderer as HtmlRenderer;
-            if (htmlRenderer != null)
+            if (renderer is HtmlRenderer htmlRenderer)
             {
                 var inlineRenderer = htmlRenderer.ObjectRenderers.FindExact<LinkInlineRenderer>();
                 if (inlineRenderer != null)
@@ -54,19 +51,28 @@ namespace Markdig.Extensions.MediaLinks
                 return false;
             }
 
-            Uri uri;
+            bool isSchemaRelative = false;
             // Only process absolute Uri
-            if (!Uri.TryCreate(linkInline.Url, UriKind.RelativeOrAbsolute, out uri) || !uri.IsAbsoluteUri)
+            if (!Uri.TryCreate(linkInline.Url, UriKind.RelativeOrAbsolute, out Uri uri) || !uri.IsAbsoluteUri)
             {
-                return false;
+                // see https://tools.ietf.org/html/rfc3986#section-4.2
+                // since relative uri doesn't support many properties, "http" is used as a placeholder here.
+                if (linkInline.Url.StartsWith("//") && Uri.TryCreate("http:" + linkInline.Url, UriKind.Absolute, out uri))
+                {
+                    isSchemaRelative = true;
+                }
+                else
+                {
+                    return false;
+                }
             }
 
-            if (TryRenderIframeFromKnownProviders(uri, renderer, linkInline))
+            if (TryRenderIframeFromKnownProviders(uri, isSchemaRelative, renderer, linkInline))
             {
                 return true;
             }
 
-            if (TryGuessAudioVideoFile(uri, renderer, linkInline))
+            if (TryGuessAudioVideoFile(uri, isSchemaRelative, renderer, linkInline))
             {
                 return true;
             }
@@ -86,14 +92,13 @@ namespace Markdig.Extensions.MediaLinks
             return htmlAttributes;
         }
 
-        private bool TryGuessAudioVideoFile(Uri uri, HtmlRenderer renderer, LinkInline linkInline)
+        private bool TryGuessAudioVideoFile(Uri uri, bool isSchemaRelative, HtmlRenderer renderer, LinkInline linkInline)
         {
             var path = uri.GetComponents(UriComponents.Path, UriFormat.Unescaped);
             // Otherwise try to detect if we have an audio/video from the file extension
-            string mimeType;
             var lastDot = path.LastIndexOf('.');
             if (lastDot >= 0 &&
-                Options.ExtensionToMimeType.TryGetValue(path.Substring(lastDot), out mimeType))
+                Options.ExtensionToMimeType.TryGetValue(path.Substring(lastDot), out string mimeType))
             {
                 var htmlAttributes = GetHtmlAttributes(linkInline);
                 var isAudio = mimeType.StartsWith("audio");
@@ -106,6 +111,10 @@ namespace Markdig.Extensions.MediaLinks
                     htmlAttributes.AddPropertyIfNotExist("height", Options.Height);
                 }
                 htmlAttributes.AddPropertyIfNotExist("controls", null);
+
+                if (!string.IsNullOrEmpty(Options.Class))
+                    htmlAttributes.AddClass(Options.Class);
+
                 renderer.WriteAttributes(htmlAttributes);
 
                 renderer.Write($"><source type=\"{mimeType}\" src=\"{linkInline.Url}\"></source></{tagType}>");
@@ -115,38 +124,18 @@ namespace Markdig.Extensions.MediaLinks
             return false;
         }
 
-        #region Known providers
-
-        private class KnownProvider
+        private bool TryRenderIframeFromKnownProviders(Uri uri, bool isSchemaRelative, HtmlRenderer renderer, LinkInline linkInline)
         {
-            public string HostPrefix { get; set; }
-            public Func<Uri, string> Delegate { get; set; }
-            public bool AllowFullScreen { get; set; } = true; //Should be false for audio embedding
-        }
 
-        private static readonly List<KnownProvider> KnownHosts = new List<KnownProvider>()
-        {
-            new KnownProvider {HostPrefix = "www.youtube.com", Delegate = YouTube},
-            new KnownProvider {HostPrefix = "youtu.be", Delegate = YouTubeShortened},
-            new KnownProvider {HostPrefix = "vimeo.com", Delegate = Vimeo},
-            new KnownProvider {HostPrefix = "music.yandex.ru", Delegate = Yandex, AllowFullScreen = false},
-            new KnownProvider {HostPrefix = "ok.ru", Delegate = Odnoklassniki},
-        };
-
-
-        private bool TryRenderIframeFromKnownProviders(Uri uri, HtmlRenderer renderer, LinkInline linkInline)
-        {
-            var foundProvider =
-                KnownHosts
-                    .Where(pair => uri.Host.StartsWith(pair.HostPrefix, StringComparison.OrdinalIgnoreCase))  // when host is match
-                    .Select(provider =>
-                        new
-                        {
-                            provider.AllowFullScreen,
-                            Result = provider.Delegate(uri) // try to call delegate to get iframeUrl
-                        }
-                        )
-                    .FirstOrDefault(provider => provider.Result != null);                                   // use first success
+            IHostProvider foundProvider = null;
+            string iframeUrl = null;
+            foreach (var provider in Options.Hosts)
+            {
+                if (!provider.TryHandle(uri, isSchemaRelative, out iframeUrl))
+                    continue;
+                foundProvider = provider;
+                break;
+            }
 
             if (foundProvider == null)
             {
@@ -155,17 +144,20 @@ namespace Markdig.Extensions.MediaLinks
 
             var htmlAttributes = GetHtmlAttributes(linkInline);
             renderer.Write("<iframe src=\"");
-            renderer.WriteEscapeUrl(foundProvider.Result);
+            renderer.WriteEscapeUrl(iframeUrl);
             renderer.Write("\"");
 
-            if(!string.IsNullOrEmpty(Options.Width))
+            if (!string.IsNullOrEmpty(Options.Width))
                 htmlAttributes.AddPropertyIfNotExist("width", Options.Width);
 
             if (!string.IsNullOrEmpty(Options.Height))
                 htmlAttributes.AddPropertyIfNotExist("height", Options.Height);
 
             if (!string.IsNullOrEmpty(Options.Class))
-                htmlAttributes.AddPropertyIfNotExist("class", Options.Class);
+                htmlAttributes.AddClass(Options.Class);
+
+            if (!string.IsNullOrEmpty(foundProvider.Class))
+                htmlAttributes.AddClass(foundProvider.Class);
 
             htmlAttributes.AddPropertyIfNotExist("frameborder", "0");
             if (foundProvider.AllowFullScreen)
@@ -177,81 +169,5 @@ namespace Markdig.Extensions.MediaLinks
 
             return true;
         }
-
-        private static readonly string[] SplitAnd = {"&"};
-        private static string[] SplitQuery(Uri uri)
-        {
-            var query = uri.Query.Substring(uri.Query.IndexOf('?') + 1);
-            return query.Split(SplitAnd, StringSplitOptions.RemoveEmptyEntries);
-        }
-
-        private static string YouTube(Uri uri)
-        {
-            string uriPath = uri.AbsolutePath;
-            if (string.Equals(uriPath, "/embed", StringComparison.OrdinalIgnoreCase) || uriPath.StartsWith("/embed/", StringComparison.OrdinalIgnoreCase))
-            {
-                return uri.ToString();
-            }
-            if (!string.Equals(uriPath, "/watch", StringComparison.OrdinalIgnoreCase) && !uriPath.StartsWith("/watch/", StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-            var queryParams = SplitQuery(uri);
-            return BuildYouTubeIframeUrl(
-                queryParams.FirstOrDefault(p => p.StartsWith("v="))?.Substring(2),
-                queryParams.FirstOrDefault(p => p.StartsWith("t="))?.Substring(2)
-            );
-        }
-
-        private static string YouTubeShortened(Uri uri)
-        {
-            return BuildYouTubeIframeUrl(
-                uri.AbsolutePath.Substring(1),
-                SplitQuery(uri).FirstOrDefault(p => p.StartsWith("t="))?.Substring(2)
-            );
-        }
-
-        private static string BuildYouTubeIframeUrl(string videoId, string startTime)
-        {
-            if (string.IsNullOrEmpty(videoId))
-            {
-                return null;
-            }
-            string url = $"https://www.youtube.com/embed/{videoId}";
-            return string.IsNullOrEmpty(startTime) ? url : $"{url}?start={startTime}";
-        }
-
-        private static string Vimeo(Uri uri)
-        {
-            var items = uri.GetComponents(UriComponents.Path, UriFormat.Unescaped).Split('/');
-            return items.Length > 0 ? $"https://player.vimeo.com/video/{items[items.Length - 1]}" : null;
-        }
-
-        private static string Odnoklassniki(Uri uri)
-        {
-            var items = uri.GetComponents(UriComponents.Path, UriFormat.Unescaped).Split('/');
-            return items.Length > 0 ? $"https://ok.ru/videoembed/{items[items.Length - 1]}" : null;
-        }
-
-        private static string Yandex(Uri uri)
-        {
-            var items = uri.GetComponents(UriComponents.Path, UriFormat.Unescaped).Split('/');
-            var albumKeyword
-                = items.Skip(0).FirstOrDefault();
-            var albumId
-                = items.Skip(1).FirstOrDefault();
-            var trackKeyword
-                = items.Skip(2).FirstOrDefault();
-            var trackId
-                = items.Skip(3).FirstOrDefault();
-
-            if (albumKeyword != "album" || albumId == null || trackKeyword != "track" || trackId == null)
-            {
-                return null;
-            }
-
-            return $"https://music.yandex.ru/iframe/#track/{trackId}/{albumId}/";
-        }
-        #endregion
     }
 }

@@ -1,6 +1,7 @@
 // Copyright (c) Alexandre Mutel. All rights reserved.
 // This file is licensed under the BSD-Clause 2 license. 
 // See the license.txt file in the project root for more information.
+
 using System.Collections.Generic;
 using Markdig.Helpers;
 using Markdig.Parsers;
@@ -10,7 +11,7 @@ namespace Markdig.Extensions.Tables
     /// <summary>
     /// Internal state used by the <see cref="GridTableParser"/>
     /// </summary>
-    internal class GridTableState
+    internal sealed class GridTableState
     {
         public int Start { get; set; }
 

@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Markdig.Extensions.JiraLinks;
+using Markdig.Syntax;
 using NUnit.Framework;
 
 namespace Markdig.Tests
@@ -21,7 +22,27 @@ namespace Markdig.Tests
             if (IsContinuousIntegration)
                 return;
 
-            foreach (var specFilePath in SpecsFilePaths)
+            var specsFilePaths = Directory.GetDirectories(TestsDirectory)
+                .Where(dir => dir.EndsWith("Specs"))
+                .SelectMany(dir => Directory.GetFiles(dir)
+                    .Where(file => file.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+                    .Where(file => file.IndexOf("readme", StringComparison.OrdinalIgnoreCase) == -1))
+                .ToArray();
+
+            var specsMarkdown = new string[specsFilePaths.Length];
+            var specsSyntaxTrees = new MarkdownDocument[specsFilePaths.Length];
+
+            var pipeline = new MarkdownPipelineBuilder()
+                .UseAdvancedExtensions()
+                .Build();
+
+            for (int i = 0; i < specsFilePaths.Length; i++)
+            {
+                string markdown = specsMarkdown[i] = File.ReadAllText(specsFilePaths[i]);
+                specsSyntaxTrees[i] = Markdown.Parse(markdown, pipeline);
+            }
+
+            foreach (var specFilePath in specsFilePaths)
             {
                 string testFilePath = Path.ChangeExtension(specFilePath, ".generated.cs");
 
@@ -33,15 +54,17 @@ namespace Markdig.Tests
 
                 // If file creation times aren't preserved by git, add some leeway
                 // If specs have come from git, assume that they were regenerated since CI would fail otherwise
-                testTime = testTime.AddSeconds(2);
+                testTime = testTime.AddMinutes(3);
 
-                // This might not catch a changed spec every time, but should most of the time. Otherwise CI will catch it
+                // This might not catch a changed spec every time, but should at least sometimes. Otherwise CI will catch it
 
                 // This could also trigger, if a user has modified the spec file but reverted the change - can't think of a good workaround
                 Assert.Less(specTime, testTime,
                     $"{Path.GetFileName(specFilePath)} has been modified. Run SpecFileGen to regenerate the tests. " +
                     "If you have modified a specification file, but reverted all changes, ignore this error or revert the 'changed' timestamp metadata on the file.");
             }
+
+            TestDescendantsOrder.TestSchemas(specsSyntaxTrees);
         }
 
         public static void TestSpec(string inputText, string expectedOutputText, string extensions = null, bool plainText = false)
@@ -140,31 +163,15 @@ namespace Markdig.Tests
 
         public static readonly bool IsContinuousIntegration = Environment.GetEnvironmentVariable("CI") != null;
 
-        public static readonly string TestsDirectory =
-            Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(TestParser).Assembly.Location), "../../.."));
+        public static readonly string TestsDirectory = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(TestParser).Assembly.Location), "../../.."));
 
-        /// <summary>
-        /// Contains absolute paths to specification markdown files (order is the same as in <see cref="SpecsMarkdown"/>)
-        /// </summary>
-        public static readonly string[] SpecsFilePaths;
-        /// <summary>
-        /// Contains the markdown source for specification files (order is the same as in <see cref="SpecsFilePaths"/>)
-        /// </summary>
-        public static readonly string[] SpecsMarkdown;
         static TestParser()
         {
-            SpecsFilePaths = Directory.GetDirectories(TestsDirectory)
-                .Where(dir => dir.EndsWith("Specs"))
-                .SelectMany(dir => Directory.GetFiles(dir)
-                    .Where(file => file.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
-                    .Where(file => file.IndexOf("readme", StringComparison.OrdinalIgnoreCase) == -1))
-                .ToArray();
-
-            SpecsMarkdown = new string[SpecsFilePaths.Length];
-
-            for (int i = 0; i < SpecsFilePaths.Length; i++)
+            const string RunningInsideVisualStudioPath = "\\src\\.vs\\markdig\\";
+            int index = TestsDirectory.IndexOf(RunningInsideVisualStudioPath);
+            if (index != -1)
             {
-                SpecsMarkdown[i] = File.ReadAllText(SpecsFilePaths[i]);
+                TestsDirectory = TestsDirectory.Substring(0, index) + "\\src\\Markdig.Tests";
             }
         }
     }

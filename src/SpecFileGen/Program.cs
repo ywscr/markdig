@@ -58,6 +58,7 @@ namespace SpecFileGen
         {
             new Spec("CommonMark v. 0.29",  "CommonMark.md",                ""),
             new Spec("Pipe Tables",         "PipeTableSpecs.md",            "pipetables|advanced"),
+            new Spec("GFM Pipe Tables",     "PipeTableGfmSpecs.md",         "gfm-pipetables"),
             new Spec("Footnotes",           "FootnotesSpecs.md",            "footnotes|advanced"),
             new Spec("Generic Attributes",  "GenericAttributesSpecs.md",    "attributes|advanced"),
             new Spec("Emphasis Extra",      "EmphasisExtraSpecs.md",        "emphasisextras|advanced"),
@@ -103,26 +104,18 @@ namespace SpecFileGen
                     continue;
                 }
 
-                string source = ParseSpecification(spec, File.ReadAllText(spec.Path));
+                string source = ParseSpecification(spec, File.ReadAllText(spec.Path)).Replace("\r\n", "\n", StringComparison.Ordinal);
                 totalTests += spec.TestCount;
 
                 if (File.Exists(spec.OutputPath))  // If the source hasn't changed, don't bump the generated tag
                 {
-                    string previousSource = File.ReadAllText(spec.OutputPath);
-                    int start = previousSource.IndexOf('\n', StringComparison.Ordinal) + 1;
-                    int previousLength = previousSource.Length - start;
-                    if (start != 0 && previousLength == source.Length)
+                    string previousSource = File.ReadAllText(spec.OutputPath).Replace("\r\n", "\n", StringComparison.Ordinal);
+                    if (previousSource == source)
                     {
-                        if (previousSource.IndexOf(source, start, previousLength, StringComparison.Ordinal) == start)
-                        {
-                            // The source did not change
-                            continue;
-                        }
+                        continue;
                     }
                 }
-
-                string generated = "// Generated: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + '\n';
-                File.WriteAllText(spec.OutputPath, generated + source);
+                File.WriteAllText(spec.OutputPath, source);
                 anyChanged = true;
             }
 
@@ -137,7 +130,7 @@ namespace SpecFileGen
 
             if (anyChanged && Environment.GetEnvironmentVariable("CI") != null)
             {
-                EmitError("Run SpecFileGen when changing specification files");
+                EmitError("Error - Specification files have changed. You must run SpecFileGen when changing specification files.");
                 Environment.Exit(1);
             }
 

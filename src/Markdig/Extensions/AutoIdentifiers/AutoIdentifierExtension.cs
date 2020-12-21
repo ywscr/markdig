@@ -2,7 +2,6 @@
 // This file is licensed under the BSD-Clause 2 license.
 // See the license.txt file in the project root for more information.
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using Markdig.Helpers;
@@ -17,11 +16,12 @@ namespace Markdig.Extensions.AutoIdentifiers
     /// <summary>
     /// The auto-identifier extension
     /// </summary>
-    /// <seealso cref="Markdig.IMarkdownExtension" />
+    /// <seealso cref="IMarkdownExtension" />
     public class AutoIdentifierExtension : IMarkdownExtension
     {
         private const string AutoIdentifierKey = "AutoIdentifier";
         private readonly AutoIdentifierOptions options;
+        private readonly StripRendererCache rendererCache = new StripRendererCache();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AutoIdentifierExtension"/> class.
@@ -62,8 +62,7 @@ namespace Markdig.Extensions.AutoIdentifiers
         private void HeadingBlockParser_Closed(BlockProcessor processor, Block block)
         {
             // We may have a ParagraphBlock here as we have a hook on the ParagraphBlockParser
-            var headingBlock = block as HeadingBlock;
-            if (headingBlock == null)
+            if (!(block is HeadingBlock headingBlock))
             {
                 return;
             }
@@ -159,17 +158,11 @@ namespace Markdig.Extensions.AutoIdentifiers
             }
 
             // Use internally a HtmlRenderer to strip links from a heading
-            var headingWriter = new StringWriter();
-            var stripRenderer = new HtmlRenderer(headingWriter)
-            {
-                // Set to false both to avoid having any HTML tags in the output
-                EnableHtmlForInline = false,
-                EnableHtmlEscape = false
-            };
+            var stripRenderer = rendererCache.Get();
 
             stripRenderer.Render(headingBlock.Inline);
-            var headingText = headingWriter.ToString();
-            headingWriter.GetStringBuilder().Length = 0;
+            var headingText = stripRenderer.Writer.ToString();
+            rendererCache.Release(stripRenderer);
 
             // Urilize the link
             headingText = (options & AutoIdentifierOptions.GitHub) != 0
@@ -194,6 +187,26 @@ namespace Markdig.Extensions.AutoIdentifiers
             }
 
             attributes.Id = headingId;
+        }
+
+        private sealed class StripRendererCache : ObjectCache<HtmlRenderer>
+        {
+            protected override HtmlRenderer NewInstance()
+            {
+                var headingWriter = new StringWriter();
+                var stripRenderer = new HtmlRenderer(headingWriter)
+                {
+                    // Set to false both to avoid having any HTML tags in the output
+                    EnableHtmlForInline = false,
+                    EnableHtmlEscape = false
+                };
+                return stripRenderer;
+            }
+
+            protected override void Reset(HtmlRenderer instance)
+            {
+                instance.Reset();
+            }
         }
     }
 }
