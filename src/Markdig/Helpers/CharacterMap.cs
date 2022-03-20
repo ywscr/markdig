@@ -107,7 +107,7 @@ namespace Markdig.Helpers
         {
             if (nonAsciiMap is null)
             {
-#if NETCOREAPP3_1
+#if NETCOREAPP3_1_OR_GREATER
                 ref char textRef = ref Unsafe.AsRef(in text.GetPinnableReference());
                 for (; start <= end; start++)
                 {
@@ -154,12 +154,12 @@ namespace Markdig.Helpers
 
         private int IndexOfOpeningCharacterNonAscii(string text, int start, int end)
         {
-#if NETCOREAPP3_1
+#if NETCOREAPP3_1_OR_GREATER
             ref char textRef = ref Unsafe.AsRef(in text.GetPinnableReference());
             for (int i = start; i <= end; i++)
             {
                 char c = Unsafe.Add(ref textRef, i);
-                if (c < 128 ? isOpeningCharacter[c] : nonAsciiMap.ContainsKey(c))
+                if (c < 128 ? isOpeningCharacter[c] : nonAsciiMap!.ContainsKey(c))
                 {
                     return i;
                 }

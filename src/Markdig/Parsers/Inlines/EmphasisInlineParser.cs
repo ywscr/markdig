@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Markdig.Helpers;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
@@ -91,10 +92,16 @@ namespace Markdig.Parsers.Inlines
 
         public bool PostProcess(InlineProcessor state, Inline? root, Inline? lastChild, int postInlineProcessorIndex, bool isFinalProcessing)
         {
-            if (!(root is ContainerInline container))
+            if (root is null || !root.IsContainerInline)
             {
                 return true;
             }
+
+#if NETSTANDARD2_1
+            ContainerInline container = (ContainerInline)root;
+#else
+            ContainerInline container = Unsafe.As<ContainerInline>(root);
+#endif
 
             List<EmphasisDelimiterInline>? delimiters = null;
             if (container is EmphasisDelimiterInline emphasisDelimiter)
@@ -103,25 +110,26 @@ namespace Markdig.Parsers.Inlines
                 delimiters.Add(emphasisDelimiter);
             }
 
-            // Move current_position forward in the delimiter stack (if needed) until 
-            // we find the first potential closer with delimiter * or _. (This will be the potential closer closest to the beginning of the input – the first one in parse order.)
-            var child = container.LastChild;
+            // Collect all EmphasisDelimiterInline by searching from the root container
+            var child = container.FirstChild;
             while (child != null)
             {
+                // Stop the search on the delimitation child 
                 if (child == lastChild)
                 {
                     break;
                 }
+
+                // If we have a delimiter, we search into it as we should have a tree of EmphasisDelimiterInline
                 if (child is EmphasisDelimiterInline delimiter)
                 {
-                    if (delimiters is null)
-                    {
-                        delimiters = inlinesCache.Get();
-                    }
+                    delimiters ??= inlinesCache.Get();
                     delimiters.Add(delimiter);
+                    child = delimiter.FirstChild;
+                    continue;
                 }
-                var subContainer = child as ContainerInline;
-                child = subContainer?.LastChild;
+
+                child = child.NextSibling;
             }
 
             if (delimiters != null)
