@@ -97,11 +97,7 @@ namespace Markdig.Parsers.Inlines
                 return true;
             }
 
-#if NETSTANDARD2_1
-            ContainerInline container = (ContainerInline)root;
-#else
             ContainerInline container = Unsafe.As<ContainerInline>(root);
-#endif
 
             List<EmphasisDelimiterInline>? delimiters = null;
             if (container is EmphasisDelimiterInline emphasisDelimiter)
@@ -120,16 +116,22 @@ namespace Markdig.Parsers.Inlines
                     break;
                 }
 
-                // If we have a delimiter, we search into it as we should have a tree of EmphasisDelimiterInline
-                if (child is EmphasisDelimiterInline delimiter)
+                if (child.IsContainer && child is DelimiterInline delimiterInline)
                 {
-                    delimiters ??= inlinesCache.Get();
-                    delimiters.Add(delimiter);
-                    child = delimiter.FirstChild;
-                    continue;
-                }
+                    // If we have a delimiter, we search into it as we should have a tree of EmphasisDelimiterInline
+                    if (delimiterInline is EmphasisDelimiterInline delimiter)
+                    {
+                        delimiters ??= inlinesCache.Get();
+                        delimiters.Add(delimiter);
+                    }
 
-                child = child.NextSibling;
+                    // Follow DelimiterInline (EmphasisDelimiter, TableDelimiter...)
+                    child = delimiterInline.FirstChild;
+                }
+                else
+                {
+                    child = child.NextSibling;
+                }
             }
 
             if (delimiters != null)
