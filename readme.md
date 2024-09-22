@@ -12,7 +12,7 @@ You can **try Markdig online** and compare it to other implementations on [babel
 
 - **Very fast parser and html renderer** (no-regexp), very lightweight in terms of GC pressure. See benchmarks
 - **Abstract Syntax Tree** with precise source code location for syntax tree, useful when building a Markdown editor.
-  - Checkout [MarkdownEditor for Visual Studio](https://visualstudiogallery.msdn.microsoft.com/eaab33c3-437b-4918-8354-872dfe5d1bfe) powered by Markdig!
+  - Checkout [Markdown Editor v2 for Visual Studio 2022](https://marketplace.visualstudio.com/items?itemName=MadsKristensen.MarkdownEditor2) powered by Markdig!
 - Converter to **HTML**
 - Passing more than **600+ tests** from the latest [CommonMark specs (0.30)](http://spec.commonmark.org/)
 - Includes all the core elements of CommonMark:
@@ -48,7 +48,7 @@ You can **try Markdig online** and compare it to other implementations on [babel
   - [**Emoji**](src/Markdig.Tests/Specs/EmojiSpecs.md) support (inspired from [Markdown-it](https://markdown-it.github.io/))
   - [**SmartyPants**](src/Markdig.Tests/Specs/SmartyPantsSpecs.md) (inspired from [Daring Fireball - SmartyPants](https://daringfireball.net/projects/smartypants/))
   - [**Bootstrap**](src/Markdig.Tests/Specs/BootstrapSpecs.md) class (to output bootstrap class)
-  - [**Diagrams**](src/Markdig.Tests/Specs/DiagramsSpecs.md) extension whenever a fenced code block contains a special keyword, it will be converted to a div block with the content as-is (currently, supports [`mermaid`](https://knsv.github.io/mermaid/) and [`nomnoml`](https://github.com/skanaar/nomnoml) diagrams)
+  - [**Diagrams**](src/Markdig.Tests/Specs/DiagramsSpecs.md) extension whenever a fenced code block contains a special keyword, it will be converted to a div block with the content as-is (currently, supports [`mermaid`](https://mermaid.js.org) and [`nomnoml`](https://github.com/skanaar/nomnoml) diagrams)
   - [**YAML Front Matter**](src/Markdig.Tests/Specs/YamlSpecs.md) to parse without evaluating the front matter and to discard it from the HTML output (typically used for previewing without the front matter in MarkdownEditor)
   - [**JIRA links**](src/Markdig.Tests/Specs/JiraLinks.md) to automatically generate links for JIRA project references (Thanks to @clarkd: https://github.com/clarkd/MarkdigJiraLinker)
 - Starting with Markdig version `0.20.0+`, Markdig is compatible only with `NETStandard 2.0`, `NETStandard 2.1`, `NETCoreApp 2.1` and `NETCoreApp 3.1`.
@@ -70,7 +70,7 @@ If you are looking for support for an old .NET Framework 3.5 or 4.0, you can dow
 
 While there is not yet a dedicated documentation, you can find from the [specs documentation](src/Markdig.Tests/Specs/readme.md) how to use these extensions.
 
-In the meantime, you can have a "behind the scene" article about Markdig in my blog post ["Implementing a Markdown Engine for .NET"](http://xoofx.com/blog/2016/06/13/implementing-a-markdown-processor-for-dotnet/)
+In the meantime, you can have a "behind the scene" article about Markdig in my blog post ["Implementing a Markdown Engine for .NET"](http://xoofx.github.io/blog/2016/06/13/implementing-a-markdown-processor-for-dotnet/)
 
 ## Download
 
@@ -100,6 +100,10 @@ var result = Markdown.ToHtml("This is a text with some *emphasis*", pipeline);
 [Try it online!](https://dotnetfiddle.net/GoZXyI)
 
 You can have a look at the [MarkdownExtensions](https://github.com/lunet-io/markdig/blob/master/src/Markdig/MarkdownExtensions.cs) that describes all actionable extensions (by modifying the MarkdownPipeline)
+
+## Contributing
+
+Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are greatly appreciated. For detailed contributing guidelines, please see [contributing.md](contributing.md).
 
 ## Build
 
@@ -160,4 +164,4 @@ Some decoding part (e.g HTML [EntityHelper.cs](https://github.com/lunet-io/markd
 Thanks to the work done by @clarkd on the JIRA Link extension (https://github.com/clarkd/MarkdigJiraLinker), now included with this project!
 ## Author
 
-Alexandre MUTEL aka [xoofx](http://xoofx.com)
+Alexandre MUTEL aka [xoofx](http://xoofx.github.io)
